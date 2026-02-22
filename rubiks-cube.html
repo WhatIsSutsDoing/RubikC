@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rubik's Cube</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg:     #080c14;
+    --panel:  #0e1520;
+    --border: #1e2d45;
+    --text:   #c8d8f0;
+    --dim:    #4a6080;
+    --glow:   #3a7fff;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    height: 100svh;
+    overflow: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+    pointer-events: none;
+    z-index: 10;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .logo-cubes {
+    display: grid;
+    grid-template-columns: repeat(3,7px);
+    grid-template-rows: repeat(3,7px);
+    gap: 1.5px;
+  }
+  .logo-cubes span { border-radius: 1px; display: block; }
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: clamp(0.9rem, 3vw, 1.3rem);
+    letter-spacing: 6px;
+    text-transform: uppercase;
+  }
+  .drag-label {
+    position: absolute; right: 16px;
+    font-size: 0.55rem; letter-spacing: 2px;
+    color: var(--dim); text-transform: uppercase;
+  }
+  #canvas-container {
+    flex: 1;
+    min-height: 0;
+    cursor: grab;
+    user-select: none;
+  }
+  #canvas-container:active { cursor: grabbing; }
+  #canvas-container canvas { display: block; }
+  #controls {
+    flex-shrink: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 10px 12px 13px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .moves-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    width: 100%;
+    max-width: 620px;
+  }
+  .move-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .move-label { font-size: 0.55rem; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); }
+  .btn-pair { display: flex; gap: 5px; width: 100%; }
+  .btn {
+    flex: 1;
+    border: none; border-radius: 5px;
+    padding: 10px 4px;
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(0.6rem, 2vw, 0.78rem);
+    font-weight: 700;
+    transition: transform 0.08s, filter 0.1s, opacity 0.15s;
+    position: relative; overflow: hidden;
+  }
+  .btn::after {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(255,255,255,0.1); opacity: 0;
+    transition: opacity 0.1s;
+  }
+  .btn:hover:not(:disabled)::after { opacity: 1; }
+  .btn:active:not(:disabled) { transform: scale(0.92); filter: brightness(0.85); }
+  .btn:disabled, #btn-scramble:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-u { background: #1e5c3a; color: #7dffc0; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.35); }
+  .btn-d { background: #5a4a10; color: #ffd966; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.35); }
+  .btn-r { background: #1a3c7a; color: #7dbfff; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.35); }
+  .btn-l { background: #7a2c14; color: #ffaa77; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.35); }
+  .btn-f { background: #4a3a10; color: #ffd966; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.35); }
+  .btn-b { background: #3a1a5a; color: #cc99ff; box-shadow: inset 0 -2px 0 rgba(0,0,0,0.35); }
+  .divider { width: 100%; max-width: 620px; height: 1px; background: var(--border); }
+  #btn-scramble {
+    width: 100%; max-width: 620px;
+    padding: 12px 0;
+    background: #111c2e;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    font-size: clamp(0.7rem, 2vw, 0.9rem);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
+  }
+  #btn-scramble:hover:not(:disabled) { background: #1a2d50; border-color: var(--glow); box-shadow: 0 0 14px rgba(58,127,255,0.3); }
+  #btn-scramble:active:not(:disabled) { transform: scale(0.98); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-cubes" id="logoCubes"></div>
+  <h1>Rubik's Cube</h1>
+  <span class="drag-label">Drag to orbit</span>
+</header>
+
+<div id="canvas-container"></div>
+
+<div id="controls">
+  <div class="moves-grid">
+    <!-- U -->
+    <div class="move-col">
+      <span class="move-label">Top</span>
+      <div class="btn-pair">
+        <button class="btn btn-u" onclick="doMove('U')"  title="U – top CW">U</button>
+        <button class="btn btn-u" onclick="doMove('UP')" title="U′ – top CCW">U′</button>
+      </div>
+    </div>
+    <!-- D -->
+    <div class="move-col">
+      <span class="move-label">Bottom</span>
+      <div class="btn-pair">
+        <button class="btn btn-d" onclick="doMove('D')"  title="D – bottom CW">D</button>
+        <button class="btn btn-d" onclick="doMove('DP')" title="D′ – bottom CCW">D′</button>
+      </div>
+    </div>
+    <!-- R -->
+    <div class="move-col">
+      <span class="move-label">Right</span>
+      <div class="btn-pair">
+        <button class="btn btn-r" onclick="doMove('R')"  title="R – right layer up">R↑</button>
+        <button class="btn btn-r" onclick="doMove('RP')" title="R′ – right layer down">R↓</button>
+      </div>
+    </div>
+    <!-- L -->
+    <div class="move-col">
+      <span class="move-label">Left</span>
+      <div class="btn-pair">
+        <button class="btn btn-l" onclick="doMove('L')"  title="L – left layer down">L↓</button>
+        <button class="btn btn-l" onclick="doMove('LP')" title="L′ – left layer up">L↑</button>
+      </div>
+    </div>
+    <!-- F -->
+    <div class="move-col">
+      <span class="move-label">Front</span>
+      <div class="btn-pair">
+        <button class="btn btn-f" onclick="doMove('F')"  title="F – clockwise">F↺</button>
+        <button class="btn btn-f" onclick="doMove('FP')" title="F′ – counter-clockwise">F↻</button>
+      </div>
+    </div>
+    <!-- B -->
+    <div class="move-col">
+      <span class="move-label">Back</span>
+      <div class="btn-pair">
+        <button class="btn btn-b" onclick="doMove('B')"  title="B – back CW">B↺</button>
+        <button class="btn btn-b" onclick="doMove('BP')" title="B′ – back CCW">B↻</button>
+      </div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <button id="btn-scramble" onclick="scramble()">⟳ &nbsp;Scramble</button>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+//  CUBE STATE
+//  Faces:  U=0  D=1  F=2  B=3  L=4  R=5
+//  Each face: 9 colour values [0..5], one per sticker.
+//
+//  Sticker index layout (viewed face-on):
+//      0 1 2
+//      3 4 5
+//      6 7 8
+// ══════════════════════════════════════════════════════════════════
+const FU=0, FD=1, FF=2, FB=3, FL=4, FR=5;
+
+let state;
+function initState() {
+  state = Array.from({length:6}, (_,i) => Array(9).fill(i));
+}
+
+function rotateCW(f) {
+  const s=state[f], t=[...s];
+  s[0]=t[6]; s[1]=t[3]; s[2]=t[0];
+  s[3]=t[7]; s[4]=t[4]; s[5]=t[1];
+  s[6]=t[8]; s[7]=t[5]; s[8]=t[2];
+}
+function rotateCCW(f) {
+  const s=state[f], t=[...s];
+  s[0]=t[2]; s[1]=t[5]; s[2]=t[8];
+  s[3]=t[1]; s[4]=t[4]; s[5]=t[7];
+  s[6]=t[0]; s[7]=t[3]; s[8]=t[6];
+}
+
+// 4-cycle: value at a[ai] flows to b[bi] → c[ci] → d[di] → back to a[ai]
+function cyc(a,ai, b,bi, c,ci, d,di) {
+  const t = state[a][ai];
+  state[a][ai] = state[d][di];
+  state[d][di] = state[c][ci];
+  state[c][ci] = state[b][bi];
+  state[b][bi] = t;
+}
+
+// ── U: top layer CW (viewed from above) ──────────────────────────
+//  Edge cycle: F top row → R top row → B top row → L top row
+function applyU() {
+  rotateCW(FU);
+  for(let i=0; i<3; i++) cyc(FF,i, FR,i, FB,i, FL,i);
+}
+function applyUP() {
+  rotateCCW(FU);
+  for(let i=0; i<3; i++) cyc(FL,i, FB,i, FR,i, FF,i);
+}
+
+// ── D: bottom layer CW (viewed from below) ───────────────────────
+//  Opposite physical direction to U CW.
+//  Edge cycle: F[6,7,8] → L[6,7,8] → B[6,7,8] → R[6,7,8]
+//  (Verified with +Y/+90° rotation coordinates)
+function applyD() {
+  rotateCW(FD);
+  for(let i=6; i<9; i++) cyc(FF,i, FL,i, FB,i, FR,i);
+}
+function applyDP() {
+  rotateCCW(FD);
+  for(let i=6; i<9; i++) cyc(FF,i, FR,i, FB,i, FL,i);
+}
+
+// ── R: right layer CW (viewed from right, +X) ────────────────────
+//  F col2 → U col2 → B col0(reversed) → D col2
+function applyR() {
+  rotateCW(FR);
+  cyc(FF,2, FU,2, FB,6, FD,2);
+  cyc(FF,5, FU,5, FB,3, FD,5);
+  cyc(FF,8, FU,8, FB,0, FD,8);
+}
+function applyRP() {
+  rotateCCW(FR);
+  cyc(FD,2, FB,6, FU,2, FF,2);
+  cyc(FD,5, FB,3, FU,5, FF,5);
+  cyc(FD,8, FB,0, FU,8, FF,8);
+}
+
+// ── L: left layer CW (viewed from left, -X) ──────────────────────
+//  F col0 → D col0 → B col2(reversed) → U col0
+function applyL() {
+  rotateCW(FL);
+  cyc(FF,0, FD,0, FB,8, FU,0);
+  cyc(FF,3, FD,3, FB,5, FU,3);
+  cyc(FF,6, FD,6, FB,2, FU,6);
+}
+function applyLP() {
+  rotateCCW(FL);
+  cyc(FU,0, FB,8, FD,0, FF,0);
+  cyc(FU,3, FB,5, FD,3, FF,3);
+  cyc(FU,6, FB,2, FD,6, FF,6);
+}
+
+// ── F: front face CW (viewed from front, +Z) ─────────────────────
+//  U[6,7,8] → R[0,3,6] → D[2,1,0] → L[8,5,2]
+function applyF() {
+  rotateCW(FF);
+  cyc(FU,6, FR,0, FD,2, FL,8);
+  cyc(FU,7, FR,3, FD,1, FL,5);
+  cyc(FU,8, FR,6, FD,0, FL,2);
+}
+function applyFP() {
+  rotateCCW(FF);
+  cyc(FL,2, FD,0, FR,6, FU,8);
+  cyc(FL,5, FD,1, FR,3, FU,7);
+  cyc(FL,8, FD,2, FR,0, FU,6);
+}
+
+// ── B: back face CW (viewed from back, -Z) ───────────────────────
+//  Verified with +Z/+90° rotation coordinates:
+//  U[0]→L[6]→D[2]→R[2]→U[0]  (three parallel cycles)
+function applyB() {
+  rotateCW(FB);
+  cyc(FU,0, FL,6, FD,2, FR,2);
+  cyc(FU,1, FL,3, FD,1, FR,5);
+  cyc(FU,2, FL,0, FD,0, FR,8);
+}
+function applyBP() {
+  rotateCCW(FB);
+  cyc(FU,0, FR,2, FD,2, FL,6);
+  cyc(FU,1, FR,5, FD,1, FL,3);
+  cyc(FU,2, FR,8, FD,0, FL,0);
+}
+
+const MOVE_FNS = {
+  U:applyU,  UP:applyUP,
+  D:applyD,  DP:applyDP,
+  R:applyR,  RP:applyRP,
+  L:applyL,  LP:applyLP,
+  F:applyF,  FP:applyFP,
+  B:applyB,  BP:applyBP,
+};
+
+// FIX 2: Map each move to its inverse – used by scramble to prevent
+// cancelling pairs (e.g. R followed immediately by RP).
+const INVERSES = {
+  U:'UP', UP:'U',
+  D:'DP', DP:'D',
+  R:'RP', RP:'R',
+  L:'LP', LP:'L',
+  F:'FP', FP:'F',
+  B:'BP', BP:'B',
+};
+
+// ══════════════════════════════════════════════════════════════════
+//  THREE.JS 3D RENDERER
+// ══════════════════════════════════════════════════════════════════
+const FACE_COLORS = [
+  0xf5f5f5,  // U – white
+  0xffd700,  // D – yellow
+  0xdd2222,  // F – red
+  0xff7700,  // B – orange
+  0x229944,  // L – green
+  0x2266ee,  // R – blue
+];
+const INNER = 0x080c14;
+
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x080c14);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+container.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const key = new THREE.DirectionalLight(0xffe8cc, 0.65);
+key.position.set(4, 6, 5);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x99ccff, 0.3);
+fill.position.set(-4, -2, 3);
+scene.add(fill);
+
+// FIX 6: camera radius 6.2 → 6.9 (≈11% farther away),
+// which makes the cube appear ~10% smaller on screen.
+let theta = 0.55, phi = 1.1, radius = 6.9;
+function camUpdate() {
+  camera.position.set(
+    radius * Math.sin(phi) * Math.sin(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.cos(theta)
+  );
+  camera.lookAt(0, 0, 0);
+}
+camUpdate();
+
+// Drag orbit – mouse
+let dragging=false, lx=0, ly=0;
+container.addEventListener('mousedown', e=>{dragging=true; lx=e.clientX; ly=e.clientY;});
+window.addEventListener('mouseup', ()=>dragging=false);
+window.addEventListener('mousemove', e=>{
+  if(!dragging) return;
+  theta -= (e.clientX-lx)*0.012;
+  phi   -= (e.clientY-ly)*0.012;
+  phi = Math.max(0.1, Math.min(Math.PI-0.1, phi));
+  lx=e.clientX; ly=e.clientY;
+  camUpdate();
+});
+
+// Drag orbit – touch
+container.addEventListener('touchstart', e=>{
+  dragging=true; lx=e.touches[0].clientX; ly=e.touches[0].clientY;
+  e.preventDefault();
+},{passive:false});
+window.addEventListener('touchend', ()=>dragging=false);
+window.addEventListener('touchmove', e=>{
+  if(!dragging) return;
+  theta -= (e.touches[0].clientX-lx)*0.014;
+  phi   -= (e.touches[0].clientY-ly)*0.014;
+  phi = Math.max(0.1, Math.min(Math.PI-0.1, phi));
+  lx=e.touches[0].clientX; ly=e.touches[0].clientY;
+  camUpdate();
+},{passive:false});
+
+// ── Build 27 cubies ───────────────────────────────────────────────
+// BoxGeometry slot order: +X=0, -X=1, +Y=2, -Y=3, +Z=4, -Z=5
+//                      →  R=0,  L=1,  U=2,  D=3,  F=4,  B=5
+const CUBIE_S = 0.91;
+
+// `cubies` maps "gx,gy,gz" → mesh; rebuilt after each animated move
+// since cubies physically relocate during layer rotations.
+const cubies = {};
+
+// `allCubies` is a stable flat list used by scramble() to re-home
+// every mesh back to its original grid position instantly.
+const allCubies = [];
+
+for (let gx=-1; gx<=1; gx++)
+  for (let gy=-1; gy<=1; gy++)
+    for (let gz=-1; gz<=1; gz++) {
+      const mats = Array.from({length:6}, () =>
+        new THREE.MeshLambertMaterial({color: INNER})
+      );
+      // FIX 4: each cubie gets its own BoxGeometry instance,
+      // avoiding shared-geometry side-effects.
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(CUBIE_S, CUBIE_S, CUBIE_S),
+        mats
+      );
+      mesh.position.set(gx, gy, gz);
+      scene.add(mesh);
+      cubies[`${gx},${gy},${gz}`] = mesh;
+      allCubies.push(mesh);
+    }
+
+// Convert (face, sticker-index) → cubie grid position + material slot.
+function stickerInfo(face, i) {
+  const row = Math.floor(i/3), col = i%3;
+  switch(face) {
+    case FU: return { gx: col-1,   gy:  1,    gz: row-1,  slot: 2 }; // +Y
+    case FD: return { gx: col-1,   gy: -1,    gz: row-1,  slot: 3 }; // -Y
+    case FF: return { gx: col-1,   gy: 1-row, gz:  1,     slot: 4 }; // +Z
+    case FB: return { gx: 1-col,   gy: 1-row, gz: -1,     slot: 5 }; // -Z (X-mirrored)
+    case FR: return { gx:  1,      gy: 1-row, gz: 1-col,  slot: 0 }; // +X
+    case FL: return { gx: -1,      gy: 1-row, gz: col-1,  slot: 1 }; // -X
+  }
+}
+
+// ── FIX 1: updateVisual – logic annotated for clarity ────────────
+// Two-pass approach:
+//   Pass 1 (reset): for every slot that is NOT the outer face of this
+//                   cubie, paint it INNER (invisible dark colour).
+//   Pass 2 (paint): iterate the abstract state and colour the correct
+//                   outer slot on the correct cubie.
+//
+// The reset condition reads like "if this face slot is not exposed on
+// this cubie, darken it."  e.g. slot 0 (+X) is only outer for gx=+1;
+// for every other cubie slot 0 faces inward, so we paint it INNER.
+function updateVisual() {
+  for (let gx=-1; gx<=1; gx++)
+    for (let gy=-1; gy<=1; gy++)
+      for (let gz=-1; gz<=1; gz++) {
+        const m = cubies[`${gx},${gy},${gz}`].material;
+        if (gx !==  1) m[0].color.setHex(INNER); // slot 0 (+X) only outer at gx=+1
+        if (gx !== -1) m[1].color.setHex(INNER); // slot 1 (-X) only outer at gx=-1
+        if (gy !==  1) m[2].color.setHex(INNER); // slot 2 (+Y) only outer at gy=+1
+        if (gy !== -1) m[3].color.setHex(INNER); // slot 3 (-Y) only outer at gy=-1
+        if (gz !==  1) m[4].color.setHex(INNER); // slot 4 (+Z) only outer at gz=+1
+        if (gz !== -1) m[5].color.setHex(INNER); // slot 5 (-Z) only outer at gz=-1
+      }
+
+  for (let face = 0; face < 6; face++)
+    for (let i = 0; i < 9; i++) {
+      const {gx, gy, gz, slot} = stickerInfo(face, i);
+      cubies[`${gx},${gy},${gz}`].material[slot].color
+        .setHex(FACE_COLORS[state[face][i]]);
+    }
+}
+
+// Resize
+function onResize() {
+  const w = container.clientWidth, h = container.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// Render loop
+(function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+})();
+
+// ══════════════════════════════════════════════════════════════════
+//  FIX 5: ANIMATED MOVE QUEUE
+//
+//  Each move animates the 9 affected cubies by parenting them into
+//  a pivot Group, rotating the Group, then detaching and snapping
+//  cubies back to clean integer grid positions.
+//
+//  After each animation the position→mesh dictionary (cubies) is
+//  rebuilt from actual mesh positions, keeping it accurate across
+//  all subsequent moves and filter queries.
+// ══════════════════════════════════════════════════════════════════
+const ANIM_MS = 260;        // animation duration in ms
+let   animating = false;
+const moveQueue = [];
+
+// For each named move: the Three.js rotation axis, the final angle
+// (radians, +/-PI/2), and a filter to identify the 9 cubies in
+// that layer by their current world position.
+const MOVE_ANIM = {
+  //            axis   angle       layer filter
+  U:  { axis:'y', angle:  Math.PI/2,  filter: p => p.y >  0.5 },
+  UP: { axis:'y', angle: -Math.PI/2,  filter: p => p.y >  0.5 },
+  D:  { axis:'y', angle: -Math.PI/2,  filter: p => p.y < -0.5 },
+  DP: { axis:'y', angle:  Math.PI/2,  filter: p => p.y < -0.5 },
+  R:  { axis:'x', angle: -Math.PI/2,  filter: p => p.x >  0.5 },
+  RP: { axis:'x', angle:  Math.PI/2,  filter: p => p.x >  0.5 },
+  L:  { axis:'x', angle:  Math.PI/2,  filter: p => p.x < -0.5 },
+  LP: { axis:'x', angle: -Math.PI/2,  filter: p => p.x < -0.5 },
+  F:  { axis:'z', angle: -Math.PI/2,  filter: p => p.z >  0.5 },
+  FP: { axis:'z', angle:  Math.PI/2,  filter: p => p.z >  0.5 },
+  B:  { axis:'z', angle:  Math.PI/2,  filter: p => p.z < -0.5 },
+  BP: { axis:'z', angle: -Math.PI/2,  filter: p => p.z < -0.5 },
+};
+
+function doMove(name) {
+  moveQueue.push(name);
+  if (!animating) processQueue();
+}
+
+function processQueue() {
+  if (moveQueue.length === 0) {
+    animating = false;
+    setButtonsDisabled(false);
+    return;
+  }
+  animating = true;
+  setButtonsDisabled(true);
+  animateMove(moveQueue.shift());
+}
+
+function animateMove(name) {
+  const { axis, angle, filter } = MOVE_ANIM[name];
+
+  // Parent the 9 layer cubies into a temporary pivot Group.
+  const pivot = new THREE.Group();
+  scene.add(pivot);
+  const affected = [];
+  for (const key in cubies) {
+    const c = cubies[key];
+    if (filter(c.position)) {
+      affected.push(c);
+      pivot.attach(c);        // scene.attach preserves world matrix
+    }
+  }
+
+  const start = performance.now();
+
+  function step(now) {
+    const t = Math.min((now - start) / ANIM_MS, 1);
+    const e = t < 0.5 ? 2*t*t : 4*t - 2*t*t - 1; // ease-in-out quad
+    pivot.rotation[axis] = angle * e;
+
+    if (t >= 1) {
+      pivot.rotation[axis] = angle;   // snap to exact target
+
+      // Detach each cubie back to the scene root, then snap
+      // its position to the nearest integer grid coord and
+      // clear the inherited rotation quaternion.
+      for (const c of affected) {
+        scene.attach(c);
+        c.position.x = Math.round(c.position.x);
+        c.position.y = Math.round(c.position.y);
+        c.position.z = Math.round(c.position.z);
+        c.rotation.set(0, 0, 0);
+      }
+      scene.remove(pivot);
+
+      // Rebuild the position→mesh dictionary from actual positions.
+      const fresh = {};
+      for (const k in cubies)
+        fresh[`${cubies[k].position.x},${cubies[k].position.y},${cubies[k].position.z}`] = cubies[k];
+      for (const k in cubies) delete cubies[k];
+      Object.assign(cubies, fresh);
+
+      // Apply state change and repaint.
+      MOVE_FNS[name]();
+      updateVisual();
+      processQueue();
+    } else {
+      requestAnimationFrame(step);
+    }
+  }
+
+  requestAnimationFrame(step);
+}
+
+function setButtonsDisabled(on) {
+  document.querySelectorAll('.btn, #btn-scramble').forEach(b => b.disabled = on);
+}
+
+// ── FIX 2+3: Scramble – no inverse pairs, full 12-move set ───────
+function scramble() {
+  if (animating) return;
+  moveQueue.length = 0;
+
+  // Re-home all meshes to their original grid positions so the 3D
+  // scene is consistent with the freshly re-initialised abstract state.
+  let idx = 0;
+  for (let gx=-1; gx<=1; gx++)
+    for (let gy=-1; gy<=1; gy++)
+      for (let gz=-1; gz<=1; gz++) {
+        const m = allCubies[idx++];
+        m.position.set(gx, gy, gz);
+        m.rotation.set(0, 0, 0);
+        cubies[`${gx},${gy},${gz}`] = m;
+      }
+
+  initState();
+
+  const keys = Object.keys(MOVE_FNS);  // all 12 moves
+  let lastName = '';
+  for (let i = 0; i < 24; i++) {
+    let name;
+    // Reject: same move as last, or inverse of last (would cancel out).
+    do {
+      name = keys[Math.floor(Math.random() * keys.length)];
+    } while (name === lastName || name === INVERSES[lastName]);
+    lastName = name;
+    MOVE_FNS[name]();
+  }
+
+  updateVisual();
+  setButtonsDisabled(false);
+}
+
+// ── Logo ──────────────────────────────────────────────────────────
+(function buildLogo() {
+  const el = document.getElementById('logoCubes');
+  ['#dd2222','#ffd700','#2266ee','#229944','#f5f5f5','#ff7700',
+   '#dd2222','#2266ee','#229944'].forEach(c => {
+    const s = document.createElement('span');
+    s.style.background = c;
+    el.appendChild(s);
+  });
+})();
+
+// Init
+initState();
+updateVisual();
+</script>
+</body>
+</html>
